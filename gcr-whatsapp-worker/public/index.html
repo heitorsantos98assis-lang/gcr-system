@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GCR WhatsApp Worker</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(ellipse at top, #131b2e 0%, #0b1326 60%);
+      color: #dae2fd;
+      min-height: 100vh;
+      padding: 2rem 1rem;
+    }
+    .container { max-width: 640px; margin: 0 auto; }
+    .brand {
+      display: flex; align-items: center; gap: 0.75rem;
+      margin-bottom: 0.25rem;
+    }
+    .brand-tag {
+      font-size: 0.65rem; font-weight: 800; letter-spacing: 0.15em;
+      text-transform: uppercase;
+      padding: 0.25rem 0.5rem; border-radius: 4px;
+      background: rgba(192, 193, 255, 0.12); color: #c0c1ff;
+    }
+    h1 {
+      font-size: 1.9rem; font-weight: 900;
+      background: linear-gradient(135deg, #c0c1ff 0%, #4edea3 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      margin-bottom: 0.5rem;
+    }
+    .subtitle { color: #94a3b8; font-size: 0.85rem; margin-bottom: 1.75rem; }
+    .card {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid rgba(255,255,255,0.08);
+      border-radius: 16px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      backdrop-filter: blur(20px);
+    }
+    .card h2 {
+      font-size: 0.7rem; text-transform: uppercase;
+      letter-spacing: 0.15em; color: #c0c1ff;
+      font-weight: 900; margin-bottom: 1rem;
+    }
+    .status-row { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+    .status-dot {
+      width: 10px; height: 10px; border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .status-dot.online { background: #4edea3; box-shadow: 0 0 10px #4edea3; }
+    .status-dot.offline { background: #ffb2b7; box-shadow: 0 0 10px #ffb2b7; }
+    .status-dot.waiting { background: #fbbf24; box-shadow: 0 0 10px #fbbf24; animation: pulse 1.5s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
+    .info-row {
+      display: flex; justify-content: space-between;
+      padding: 0.5rem 0; border-bottom: 1px solid rgba(255,255,255,0.05);
+      font-size: 0.85rem;
+    }
+    .info-row:last-child { border-bottom: none; }
+    .info-label { color: #94a3b8; }
+    .info-value { color: #dae2fd; font-weight: 600; }
+    .group-tags { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 0.5rem; }
+    .group-tag {
+      background: rgba(78, 222, 163, 0.15);
+      color: #4edea3;
+      padding: 0.25rem 0.75rem;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .qr-container {
+      display: flex; flex-direction: column; align-items: center;
+      padding: 1rem; background: white; border-radius: 12px;
+    }
+    .qr-container img { width: 100%; max-width: 280px; }
+    .btn {
+      width: 100%; padding: 0.85rem 1.25rem;
+      border-radius: 10px; border: none;
+      font-family: inherit; font-weight: 700; font-size: 0.85rem;
+      cursor: pointer; transition: all 0.15s;
+      letter-spacing: 0.02em;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #4edea3 0%, #2bc88a 100%);
+      color: #003824;
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 8px 24px rgba(78, 222, 163, 0.3); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none !important; box-shadow: none !important; }
+    .log-entry {
+      display: flex; gap: 0.75rem;
+      padding: 0.5rem 0; font-size: 0.8rem;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-time { color: #94a3b8; min-width: 110px; font-variant-numeric: tabular-nums; }
+    .log-ok { color: #4edea3; }
+    .log-fail { color: #ffb2b7; }
+    .preview-msg {
+      background: #131b2e; border-radius: 8px;
+      padding: 1rem; font-size: 0.8rem; line-height: 1.5;
+      white-space: pre-wrap; color: #c7c4d7;
+      max-height: 280px; overflow-y: auto;
+      font-family: ui-monospace, monospace;
+    }
+    .toast {
+      position: fixed; bottom: 1.5rem; left: 50%; transform: translateX(-50%);
+      padding: 0.75rem 1.25rem; border-radius: 10px;
+      background: #1f2937; color: white; font-size: 0.85rem;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100;
+      opacity: 0; transition: opacity 0.2s;
+    }
+    .toast.show { opacity: 1; }
+    .empty { color: #94a3b8; font-size: 0.85rem; font-style: italic; }
+    a { color: #c0c1ff; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="brand"><span class="brand-tag">GCR · Gestão com Resultado</span></div>
+    <h1>WhatsApp Worker</h1>
+    <p class="subtitle">Relatório diário automático às 06:00 BRT com dados do dia anterior</p>
+
+    <div class="card" id="statusCard">
+      <h2>Status da Conexão</h2>
+      <div class="status-row">
+        <div class="status-dot waiting" id="statusDot"></div>
+        <div id="statusText">Carregando…</div>
+      </div>
+      <div id="userInfo" style="display:none">
+        <div class="info-row"><span class="info-label">Conta</span><span class="info-value" id="userName">—</span></div>
+        <div class="info-row"><span class="info-label">Número</span><span class="info-value" id="userNumber">—</span></div>
+      </div>
+    </div>
+
+    <div class="card" id="qrCard" style="display:none">
+      <h2>Escaneie o QR Code</h2>
+      <p style="font-size:0.8rem;color:#94a3b8;margin-bottom:1rem;">Abra o WhatsApp → Aparelhos Conectados → Conectar Aparelho</p>
+      <div class="qr-container"><img id="qrImage" alt="QR Code"></div>
+    </div>
+
+    <div class="card">
+      <h2>Configuração</h2>
+      <div class="info-row"><span class="info-label">Agenda (cron)</span><span class="info-value" id="schedule">—</span></div>
+      <div class="info-row"><span class="info-label">Timezone</span><span class="info-value" id="timezone">—</span></div>
+      <div class="info-row"><span class="info-label">Último envio</span><span class="info-value" id="lastReport">Nenhum ainda</span></div>
+      <div class="info-row"><span class="info-label">Próximo envio</span><span class="info-value" id="nextReport">—</span></div>
+      <div class="info-row" style="flex-direction:column;align-items:flex-start;gap:0.5rem">
+        <span class="info-label">Grupos-alvo</span>
+        <div class="group-tags" id="groupTags"><span class="empty">Nenhum grupo configurado</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Pré-visualização da Mensagem (dados de ontem)</h2>
+      <div class="preview-msg" id="previewMsg">Carregando…</div>
+    </div>
+
+    <div class="card">
+      <h2>Enviar Agora</h2>
+      <button class="btn btn-primary" id="btnSendNow">⚡ Enviar relatório imediatamente</button>
+    </div>
+
+    <div class="card">
+      <h2>Histórico de Envios</h2>
+      <div id="logEntries"><span class="empty">Sem envios ainda</span></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    const $ = (id) => document.getElementById(id);
+    function toast(msg) {
+      const t = $('toast'); t.textContent = msg; t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 2400);
+    }
+    function fmtDate(iso) {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return d.toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', dateStyle: 'short', timeStyle: 'short' });
+    }
+
+    async function refreshStatus() {
+      try {
+        const res = await fetch('/api/status'); const s = await res.json();
+        const dot = $('statusDot'); const txt = $('statusText');
+        if (s.connected) {
+          dot.className = 'status-dot online'; txt.textContent = 'Conectado';
+          $('userInfo').style.display = 'block';
+          $('userName').textContent = s.user?.name || '—';
+          $('userNumber').textContent = s.user?.number || '—';
+          $('qrCard').style.display = 'none';
+        } else if (s.initializing) {
+          dot.className = 'status-dot waiting'; txt.textContent = 'Inicializando…';
+        } else {
+          dot.className = 'status-dot offline'; txt.textContent = 'Aguardando QR';
+        }
+        $('schedule').textContent = s.schedule || '—';
+        $('timezone').textContent = s.timezone || '—';
+        $('lastReport').textContent = fmtDate(s.lastReport);
+        $('nextReport').textContent = fmtDate(s.nextReport);
+
+        // groups
+        const tagsEl = $('groupTags');
+        let displayGroups = [];
+        if (s.targetGroupIds && s.targetGroupIds.length) {
+          displayGroups = s.targetGroupIds.map(id => ({
+            id, name: s.groups?.find(g => g.id === id)?.name || id, status: 'id'
+          }));
+        } else if (s.targetGroupNames && s.targetGroupNames.length) {
+          const resolved = s.targetGroupNamesResolved || [];
+          const unmatched = s.targetGroupNamesUnmatched || [];
+          for (const r of resolved) displayGroups.push({ id: r.id, name: r.name, status: 'resolved' });
+          for (const n of unmatched) displayGroups.push({ id: null, name: n, status: 'unmatched' });
+        } else {
+          displayGroups = (s.groups || []).map(g => ({ ...g, status: 'fallback' }));
+        }
+        if (displayGroups.length === 0) {
+          tagsEl.innerHTML = '<span class="empty">Nenhum grupo configurado</span>';
+        } else {
+          tagsEl.innerHTML = displayGroups.map(g => {
+            const color = g.status === 'unmatched' ? 'background:rgba(255,178,183,0.15);color:#ffb2b7'
+                        : g.status === 'fallback' ? 'background:rgba(192,193,255,0.15);color:#c0c1ff'
+                        : 'background:rgba(78,222,163,0.15);color:#4edea3';
+            const prefix = g.status === 'unmatched' ? '✗ ' : g.status === 'resolved' ? '✓ ' : '';
+            return `<span class="group-tag" style="${color}">${prefix}${g.name}</span>`;
+          }).join('');
+        }
+
+        // logs
+        const logsEl = $('logEntries');
+        if (!s.recentLogs || s.recentLogs.length === 0) {
+          logsEl.innerHTML = '<span class="empty">Sem envios ainda</span>';
+        } else {
+          logsEl.innerHTML = s.recentLogs.map(l => {
+            const time = fmtDate(l.time);
+            const results = (l.results || []).map(r =>
+              `<span class="${r.success ? 'log-ok' : 'log-fail'}">${r.success ? '✓' : '✗'} ${r.group}</span>`
+            ).join(' · ');
+            return `<div class="log-entry"><span class="log-time">${time}</span><span>${results}</span></div>`;
+          }).join('');
+        }
+
+        // QR
+        if (!s.connected && s.qrAvailable) {
+          const qrRes = await fetch('/api/qr');
+          if (qrRes.ok) {
+            const { qr } = await qrRes.json();
+            $('qrImage').src = qr;
+            $('qrCard').style.display = 'block';
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function refreshPreview() {
+      try {
+        const res = await fetch('/api/preview');
+        if (!res.ok) { $('previewMsg').textContent = 'Erro ao carregar preview'; return; }
+        const { message } = await res.json();
+        $('previewMsg').textContent = message;
+      } catch (e) {
+        $('previewMsg').textContent = 'Erro: ' + e.message;
+      }
+    }
+
+    $('btnSendNow').addEventListener('click', async () => {
+      const btn = $('btnSendNow');
+      if (!confirm('Confirma envio imediato do relatório para os grupos configurados?')) return;
+      btn.disabled = true; btn.textContent = 'Enviando…';
+      try {
+        const res = await fetch('/api/send-now', { method: 'POST' });
+        const j = await res.json();
+        if (j.success) toast('✅ Enviado com sucesso!');
+        else toast('❌ ' + (j.error || 'Falha no envio'));
+        refreshStatus();
+      } catch (e) {
+        toast('❌ ' + e.message);
+      } finally {
+        btn.disabled = false; btn.textContent = '⚡ Enviar relatório imediatamente';
+      }
+    });
+
+    refreshStatus(); refreshPreview();
+    setInterval(refreshStatus, 5000);
+    setInterval(refreshPreview, 60000);
+  </script>
+</body>
+</html>
