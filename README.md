@@ -19,13 +19,13 @@ Esta build já vem **pré-configurada para você**:
 | Spreadsheet ID | `1PW7-oGks8HT4d-Xb32uQou3KJc86JpQKeY4ogI-LqeM` |
 | Aba métricas (gid) | `1981009125` |
 | Grupo-alvo (nome) | `GESTÃO ANTONIO E CELSO` |
-| Telefone que escaneia o QR | `+55 11 91506-7585` (você) |
+| Telefone que escaneia o QR | `+55 XX XXXXX-XXXX` (configurado nas variáveis de ambiente) |
 | Horário do envio | **06:00 BRT todos os dias** |
 
 Não há necessidade de descobrir o ID do grupo manualmente — o worker **localiza por nome** no momento do envio (case-insensitive). Basta:
 
 1. Deploy do worker no Railway
-2. Conectar o WhatsApp do número `11915067585` escaneando o QR code
+2. Conectar o WhatsApp do número configurado escaneando o QR code
 3. Pronto — o cron das 06:00 envia automaticamente
 
 ---
@@ -121,11 +121,11 @@ SESSION_DATA_PATH=/data/wwebjs_auth
 
 1. Abra o domínio do worker no navegador (ex.: `https://gcr-whatsapp-worker-production.up.railway.app/`)
 2. Aparecerá o card **"Escaneie o QR Code"**
-3. No celular **+55 11 91506-7585**: WhatsApp → **Aparelhos Conectados** → **Conectar um aparelho** → escaneie
+3. No celular configurado: WhatsApp → **Aparelhos Conectados** → **Conectar um aparelho** → escaneie
 4. O card vai mudar para **"Conectado"** com o nome e número da conta
 5. O worker buscará automaticamente o grupo **GESTÃO ANTONIO E CELSO** entre os grupos visíveis nesse WhatsApp
 
-> ⚠️ **O número 11915067585 precisa ser membro do grupo GESTÃO ANTONIO E CELSO**, caso contrário o worker não conseguirá enviar mensagens nele (whatsapp-web.js só vê grupos dos quais o número está participando).
+> ⚠️ **O número que escanear o QR precisa ser membro do grupo GESTÃO ANTONIO E CELSO**, caso contrário o worker não conseguirá enviar mensagens nele (whatsapp-web.js só vê grupos dos quais o número está participando).
 
 ### 4. Validar o envio
 
