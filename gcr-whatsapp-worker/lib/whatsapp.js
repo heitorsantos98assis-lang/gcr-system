@@ -84,8 +84,9 @@ async function initClient() {
 
 async function refreshGroups(timeoutMs = 12000) {
   if (!client || !connected) return { groups: [], totalChats: 0, error: 'not_connected' };
+
+  // Strategy 1: high-level client.getChats() with timeout
   try {
-    // Add timeout because getChats() can hang during initial sync
     const chats = await Promise.race([
       client.getChats(),
       new Promise((_, rej) => setTimeout(() => rej(new Error('getChats timeout')), timeoutMs)),
@@ -95,11 +96,42 @@ async function refreshGroups(timeoutMs = 12000) {
     lastChatsCount = chats.length;
     lastGroupsCount = groups.length;
     lastRefreshAt = new Date().toISOString();
-    console.log(`[wa] refreshGroups: ${chats.length} chats total, ${groups.length} grupos`);
-    return { groups: knownGroups, totalChats: chats.length, error: null };
+    console.log(`[wa] refreshGroups(getChats): ${chats.length} chats total, ${groups.length} grupos`);
+    return { groups: knownGroups, totalChats: chats.length, error: null, source: 'getChats' };
   } catch (e) {
-    console.error('[wa] Erro ao listar grupos:', e.message);
-    return { groups: knownGroups, totalChats: lastChatsCount, error: String(e.message || e) };
+    console.warn(`[wa] getChats falhou (${e.message}), tentando fallback via pupPage.evaluate...`);
+  }
+
+  // Strategy 2: bypass high-level wrapper, hit WhatsApp's internal Store directly via puppeteer
+  try {
+    if (!client.pupPage) throw new Error('pupPage not available');
+    const data = await Promise.race([
+      client.pupPage.evaluate(() => {
+        // WhatsApp Web exposes Store on window after page loads
+        const Store = window.Store || window.WPP?.whatsapp;
+        if (!Store?.Chat?.getModelsArray) return { error: 'Store.Chat not available' };
+        const all = Store.Chat.getModelsArray();
+        const groups = all.filter(c => c.isGroup || c.id?.server === 'g.us');
+        return {
+          total: all.length,
+          groups: groups.map(c => ({
+            id: c.id?._serialized || (c.id?.toString?.()),
+            name: c.name || c.formattedTitle || c.contact?.name || '',
+          })).filter(g => g.id && g.name),
+        };
+      }),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('pupPage.evaluate timeout')), timeoutMs)),
+    ]);
+    if (data?.error) throw new Error(data.error);
+    knownGroups = data.groups || [];
+    lastChatsCount = data.total || 0;
+    lastGroupsCount = knownGroups.length;
+    lastRefreshAt = new Date().toISOString();
+    console.log(`[wa] refreshGroups(evaluate): ${lastChatsCount} chats total, ${lastGroupsCount} grupos`);
+    return { groups: knownGroups, totalChats: lastChatsCount, error: null, source: 'evaluate' };
+  } catch (e) {
+    console.error('[wa] Fallback também falhou:', e.message);
+    return { groups: knownGroups, totalChats: lastChatsCount, error: String(e.message || e), source: 'failed' };
   }
 }
 
