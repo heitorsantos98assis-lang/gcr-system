@@ -10,6 +10,9 @@ let initializing = false;
 let lastError = null;
 let userInfo = null;
 let knownGroups = [];
+let lastChatsCount = 0;
+let lastGroupsCount = 0;
+let lastRefreshAt = null;
 
 async function initClient() {
   if (client) return client;
@@ -51,8 +54,12 @@ async function initClient() {
         number: client.info?.wid?.user || null,
       };
     } catch {}
-    await refreshGroups();
-    console.log(`[wa] Conectado como ${userInfo?.name} (${userInfo?.number})`);
+    console.log(`[wa] Conectado como ${userInfo?.name} (${userInfo?.number}). Aguardando 6s antes do primeiro refresh...`);
+    // Wait briefly for WhatsApp Web to start syncing chats, then refresh
+    setTimeout(async () => {
+      await refreshGroups();
+      startBackgroundGroupPolling();
+    }, 6000);
   });
 
   client.on('authenticated', () => {
@@ -75,18 +82,52 @@ async function initClient() {
   return client;
 }
 
-async function refreshGroups() {
-  if (!client || !connected) return [];
+async function refreshGroups(timeoutMs = 12000) {
+  if (!client || !connected) return { groups: [], totalChats: 0, error: 'not_connected' };
   try {
-    const chats = await client.getChats();
-    knownGroups = chats
-      .filter(c => c.isGroup)
-      .map(c => ({ id: c.id._serialized, name: c.name }));
-    return knownGroups;
+    // Add timeout because getChats() can hang during initial sync
+    const chats = await Promise.race([
+      client.getChats(),
+      new Promise((_, rej) => setTimeout(() => rej(new Error('getChats timeout')), timeoutMs)),
+    ]);
+    const groups = chats.filter(c => c.isGroup);
+    knownGroups = groups.map(c => ({ id: c.id._serialized, name: c.name }));
+    lastChatsCount = chats.length;
+    lastGroupsCount = groups.length;
+    lastRefreshAt = new Date().toISOString();
+    console.log(`[wa] refreshGroups: ${chats.length} chats total, ${groups.length} grupos`);
+    return { groups: knownGroups, totalChats: chats.length, error: null };
   } catch (e) {
-    console.error('[wa] Erro ao listar grupos:', e);
-    return [];
+    console.error('[wa] Erro ao listar grupos:', e.message);
+    return { groups: knownGroups, totalChats: lastChatsCount, error: String(e.message || e) };
   }
+}
+
+// Background poll: retry every 15s until groups are found (or for 5 minutes)
+let pollingInterval = null;
+function startBackgroundGroupPolling() {
+  if (pollingInterval) return;
+  console.log('[wa] Iniciando polling de grupos em background (a cada 15s)');
+  let attempts = 0;
+  pollingInterval = setInterval(async () => {
+    attempts++;
+    const before = knownGroups.length;
+    await refreshGroups(8000);
+    if (knownGroups.length > before) {
+      console.log(`[wa] Polling encontrou ${knownGroups.length - before} grupo(s) novo(s)`);
+    }
+    // Stop polling after 20 attempts (5 min) if we have groups, or continue if still empty
+    if (knownGroups.length > 0 && attempts >= 4) {
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+      console.log('[wa] Polling encerrado (grupos encontrados)');
+    }
+    if (attempts >= 60) { // hard cap at 15 min
+      clearInterval(pollingInterval);
+      pollingInterval = null;
+      console.log('[wa] Polling encerrado (limite de tentativas)');
+    }
+  }, 15000);
 }
 
 async function sendToGroups(groupIds, message) {
@@ -116,18 +157,40 @@ function getStatus() {
     user: userInfo,
     groups: knownGroups,
     qrAvailable: !!currentQrDataUrl,
+    sync: {
+      totalChats: lastChatsCount,
+      groupsCount: lastGroupsCount,
+      lastRefreshAt,
+      pollingActive: !!pollingInterval,
+    },
   };
 }
 
-// Resolve group names (case-insensitive, trimmed) to WhatsApp IDs using the latest known groups list.
+// Resolve group names (Unicode NFC + case-insensitive + whitespace-collapsed) to WhatsApp IDs.
 // Returns { resolved: [{name, id}], unmatched: [name, ...] }
+function normalizeName(s) {
+  return String(s || '')
+    .normalize('NFC')                    // unify pre-composed vs decomposed accents
+    .replace(/\s+/g, ' ')                // collapse whitespace
+    .trim()
+    .toLocaleLowerCase('pt-BR');
+}
+
 function resolveGroupsByName(names) {
   const resolved = [];
   const unmatched = [];
-  const normalize = (s) => String(s || '').trim().toLocaleLowerCase('pt-BR');
   for (const name of names) {
-    const target = normalize(name);
-    const match = knownGroups.find(g => normalize(g.name) === target);
+    const target = normalizeName(name);
+    // First try exact normalized match
+    let match = knownGroups.find(g => normalizeName(g.name) === target);
+    // Fallback 1: strip accents both sides
+    if (!match) {
+      const targetNoAccents = target.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      match = knownGroups.find(g => {
+        const gn = normalizeName(g.name).normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+        return gn === targetNoAccents;
+      });
+    }
     if (match) {
       resolved.push({ name: match.name, id: match.id });
     } else {

@@ -27,6 +27,12 @@ async function runReport(triggeredBy = 'cron') {
 
   const status = wa.getStatus();
 
+  // If connected but groups list looks empty (probably still syncing), force a refresh.
+  if (status.connected && status.groups.length === 0) {
+    console.log('[report] Groups list empty, forcing refresh...');
+    await wa.refreshGroups(15000);
+  }
+
   // Resolve target groups: IDs (most specific) > Names (auto-resolve) > all groups (fallback)
   let targets = [];
   let resolutionLog = null;
@@ -38,7 +44,11 @@ async function runReport(triggeredBy = 'cron') {
     targets = resolved.map(g => g.id);
     resolutionLog = `por nome: ${resolved.length} resolvido(s) [${resolved.map(g => g.name).join(', ')}]`;
     if (unmatched.length) {
-      const err = `Grupos não encontrados na conta conectada: ${unmatched.join(', ')}. Disponíveis: ${status.groups.map(g => g.name).join(' | ')}`;
+      const currentGroups = wa.getStatus().groups;
+      const availList = currentGroups.length
+        ? currentGroups.map(g => g.name).join(' | ')
+        : '(nenhum grupo sincronizado ainda — WhatsApp Web pode estar carregando os chats)';
+      const err = `Grupos não encontrados na conta conectada: ${unmatched.join(', ')}. Disponíveis: ${availList}`;
       console.error(`[report] ${err}`);
       if (resolved.length === 0) {
         logSend([{ group: 'N/A', success: false, error: err }], 0);
@@ -109,8 +119,26 @@ app.get('/api/qr', (req, res) => {
 
 app.get('/api/groups', async (req, res) => {
   try {
-    const groups = await wa.refreshGroups();
-    res.json({ groups });
+    const result = await wa.refreshGroups(15000);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ error: String(e.message || e) });
+  }
+});
+
+app.get('/api/diagnostics', async (req, res) => {
+  try {
+    const result = await wa.refreshGroups(15000);
+    const s = wa.getStatus();
+    res.json({
+      connected: s.connected,
+      user: s.user,
+      sync: s.sync,
+      groups: s.groups.map(g => ({ id: g.id, name: g.name, normalized: String(g.name || '').normalize('NFC').toLowerCase() })),
+      targetGroupNames: TARGET_GROUP_NAMES,
+      resolution: wa.resolveGroupsByName(TARGET_GROUP_NAMES),
+      refreshResult: { totalChats: result.totalChats, groupsCount: result.groups.length, error: result.error },
+    });
   } catch (e) {
     res.status(500).json({ error: String(e.message || e) });
   }
