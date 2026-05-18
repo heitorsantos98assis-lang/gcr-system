@@ -1,6 +1,9 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { fetchCsv, parseCsv, parseMetricsSheet, METRICS_GID } from './lib/sheets.js';
 
+// URL pública do WhatsApp Worker (pode ser sobrescrita via VITE_WORKER_URL no build)
+const WORKER_URL = import.meta.env.VITE_WORKER_URL || 'https://gcr-system-production.up.railway.app/';
+
 const fmtInt = (n) => (n == null || !Number.isFinite(n)) ? '0' : Math.round(n).toLocaleString('pt-BR');
 const fmtPct = (n) => (n == null || !Number.isFinite(n)) ? '0,00%' : n.toFixed(2).replace('.', ',') + '%';
 const fmtDec = (n, c = 2) => (n == null || !Number.isFinite(n)) ? '0,00' : n.toFixed(c).replace('.', ',');
@@ -177,6 +180,16 @@ export default function App() {
               GCR · Gestão com Resultado
             </span>
             {error && <span className="text-xs text-tertiary">⚠ {error}</span>}
+            <a
+              href={WORKER_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abrir painel do WhatsApp Worker"
+              className="ml-auto flex items-center gap-2 px-3 py-1.5 rounded-lg bg-secondary/10 text-secondary border border-secondary/30 hover:bg-secondary/20 transition-all text-xs font-bold"
+            >
+              <span className="material-symbols-outlined text-base leading-none">forum</span>
+              WhatsApp Worker
+            </a>
           </div>
           <h1 className="text-3xl md:text-5xl font-black bg-gradient-to-br from-primary to-secondary bg-clip-text text-transparent">
             Painel de Métricas
@@ -235,7 +248,7 @@ export default function App() {
             <h3 className="text-sm font-bold text-primary tracking-wider uppercase mb-3">Ontem</h3>
             {yesterday ? (
               <div className="space-y-2">
-                <div className="flex justify-between"><span>Leads</span><strong className="tabular-nums">{fmtInt(yesterday.leads)} / {fmtInt(yesterday.alvo)}</strong></div>
+                <div className="flex justify-between"><span>Leads</span><strong className="tabular-nums">{fmtInt(yesterday.leads)} / { fmtInt(yesterday.alvo)}</strong></div>
                 <ProgressBar pct={yesterday.pctAting} />
                 <div className="flex justify-between text-sm"><span>MQLs</span><strong className="tabular-nums text-secondary">{fmtInt(yesterday.mqls)}</strong></div>
                 <div className="text-xs text-on-surface-variant">{fmtPct(yesterday.pctAting)} do alvo · conv {fmtPct(yesterday.pctConv)}</div>
